@@ -1,0 +1,510 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Gel-Editor</title>
+  <style>
+    :root {
+      --lane: #60a5fa;
+      --marker: #60a5fa;
+      --arrow: #c62828;
+      --corner: #555555;
+      --ink: #282828;
+      --muted: #727272;
+      --border: #dedede;
+      --bg: #ffffff;
+    }
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0; padding: 0; background: transparent;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      color: var(--ink);
+    }
+    #root { width: 100%; }
+    .toolbar {
+      display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+      font-size: 12.5px; color: var(--muted); padding: 2px 2px 8px 2px;
+    }
+    .badge {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 3px 9px; border-radius: 999px;
+      background: #f3f3f3; color: #454545; font-weight: 600; font-size: 11.5px;
+    }
+    .badge.marker { background: #eaf3ff; color: #285b91; }
+    .badge.arrow { background: #fdeaea; color: #9b1c1c; }
+    .badge.corner { background: #ececec; color: #383838; }
+    .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--lane); }
+    .badge.marker .dot { background: var(--marker); }
+    .badge.arrow .dot { background: var(--arrow); }
+    .badge.corner .dot { background: var(--corner); }
+    .hint { line-height: 1.35; }
+    .stage {
+      position: relative; width: 100%; border: 1px solid var(--border);
+      border-radius: 10px; overflow: hidden; background: #fff;
+      box-shadow: 0 1px 2px rgba(23, 23, 23, 0.06); touch-action: none;
+    }
+    .stage.dark { background: #111; }
+    .stage img { display: block; width: 100%; height: auto; user-select: none; -webkit-user-drag: none; pointer-events: none; }
+    svg { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; }
+    .hit { cursor: ew-resize; }
+    .stage.markers .hit { cursor: ns-resize; }
+    .stage.targets .hit { cursor: ns-resize; }
+    .stage.corners .hit { cursor: move; }
+    .handle { cursor: ew-resize; }
+    .status {
+      position: absolute; right: 8px; bottom: 8px;
+      background: rgba(24, 24, 24, 0.82); color: #fafafa; font-size: 11px;
+      padding: 4px 8px; border-radius: 6px; pointer-events: none;
+      opacity: 0; transition: opacity 0.12s ease; font-variant-numeric: tabular-nums;
+    }
+    .status.visible { opacity: 1; }
+  </style>
+<link rel="stylesheet" href="ui-theme.css?v=1.0.3"></head>
+<body>
+  <div id="root">
+    <div class="toolbar" id="toolbar">
+      <span class="badge" id="modeBadge"><span class="dot"></span><span id="modeText">Spuren</span></span>
+      <span class="hint" id="hint"></span>
+    </div>
+    <div class="stage" id="stage">
+      <img id="figure" alt="SDS-PAGE Abbildung" />
+      <svg id="overlay" xmlns="http://www.w3.org/2000/svg">
+        <rect id="background" x="0" y="0" width="100" height="100" fill="transparent"></rect>
+        <g id="laneLayer"></g>
+        <g id="markerLayer"></g>
+        <g id="arrowLayer"></g>
+        <g id="cornerLayer"></g>
+      </svg>
+      <div class="status" id="status"></div>
+    </div>
+  </div>
+
+  <script>
+  (function () {
+    "use strict";
+
+    const DEFAULT_LAYOUT = {
+      canvas_w: 1000, canvas_h: 750, gel_left: 60, gel_top: 70,
+      gel_w: 900, gel_h: 660, header_h: 70, left_margin: 60,
+      right_margin: 40, bottom_margin: 20, tick_len: 8, tick_gap: 5, pad: 6,
+      label_font_px: 16, number_font_px: 14, letter_font_px: 20,
+      arrow_len: 40, arrow_gap: 6
+    };
+
+    const DEFAULT_LABELS = {
+      lanes_badge: "Spuren", lanes_hint: "Linie ziehen = verschieben · Klick = hinzufügen · Doppelklick = löschen",
+      markers_badge: "Marker-Banden", markers_hint: "Linie ziehen = Bande verschieben · Klick = hinzufügen · Doppelklick = entfernen",
+      arrows_badge: "Zielbanden", arrows_hint: "Griff im Rand ziehen · Klick in den Rand = neu · Doppelklick = löschen",
+      corners_badge: "Perspektive", corners_hint: "Eckpunkte auf die Gel-Ecken ziehen"
+    };
+
+    let args = null;
+    let lanes = [];
+    let markers = [];
+    let arrows = [];
+    let corners = [];
+    let mode = "lanes";
+    let selected = 0;
+    let drag = null;
+    let seq = 0;
+
+    const stage = document.getElementById("stage");
+    const img = document.getElementById("figure");
+    const svg = document.getElementById("overlay");
+    const bgRect = document.getElementById("background");
+    const laneLayer = document.getElementById("laneLayer");
+    const markerLayer = document.getElementById("markerLayer");
+    const arrowLayer = document.getElementById("arrowLayer");
+    const cornerLayer = document.getElementById("cornerLayer");
+    const statusEl = document.getElementById("status");
+    const toolbar = document.getElementById("toolbar");
+    const modeText = document.getElementById("modeText");
+    const modeBadge = document.getElementById("modeBadge");
+    const hint = document.getElementById("hint");
+
+    function post(type, payload) {
+      window.parent.postMessage(Object.assign({ isStreamlitMessage: true, type: type }, payload || {}), "*");
+    }
+    function sendValue(value) { post("streamlit:setComponentValue", { value: value, dataType: "json" }); }
+    function setFrameHeight() {
+      const height = Math.ceil(toolbar.getBoundingClientRect().height + stage.getBoundingClientRect().height + 4);
+      post("streamlit:setFrameHeight", { height: Math.max(160, height) });
+    }
+    function layout() { return Object.assign({}, DEFAULT_LAYOUT, (args && args.layout) || {}); }
+    function labels() { return Object.assign({}, DEFAULT_LABELS, (args && args.labels) || {}); }
+
+    function svgPoint(event) {
+      const rect = svg.getBoundingClientRect();
+      const l = layout();
+      return {
+        x: (event.clientX - rect.left) / Math.max(1, rect.width) * Number(l.canvas_w),
+        y: (event.clientY - rect.top) / Math.max(1, rect.height) * Number(l.canvas_h)
+      };
+    }
+    function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+    function showStatus(t) { statusEl.textContent = t; statusEl.classList.add("visible"); }
+    function hideStatus() { statusEl.classList.remove("visible"); }
+
+    function gelRect() {
+      const l = layout();
+      return { x: Number(l.gel_left), y: Number(l.gel_top), w: Number(l.gel_w), h: Number(l.gel_h) };
+    }
+    function ns(tag, attrs) {
+      const el = document.createElementNS("http://www.w3.org/2000/svg", tag);
+      Object.keys(attrs || {}).forEach(k => el.setAttribute(k, attrs[k]));
+      return el;
+    }
+
+    function render() {
+      const l = layout();
+      svg.setAttribute("viewBox", "0 0 " + l.canvas_w + " " + l.canvas_h);
+      svg.setAttribute("preserveAspectRatio", "none");
+      bgRect.setAttribute("width", l.canvas_w);
+      bgRect.setAttribute("height", l.canvas_h);
+      stage.classList.toggle("markers", mode === "markers");
+      stage.classList.toggle("lanes", mode === "lanes");
+      stage.classList.toggle("targets", mode === "targets");
+      stage.classList.toggle("corners", mode === "corners");
+      stage.classList.toggle("dark", !!(args && args.theme === "dark"));
+
+      laneLayer.innerHTML = "";
+      markerLayer.innerHTML = "";
+      arrowLayer.innerHTML = "";
+      cornerLayer.innerHTML = "";
+      const L = labels();
+
+      if (mode === "lanes") {
+        modeText.textContent = L.lanes_badge; modeBadge.className = "badge"; hint.textContent = L.lanes_hint;
+        lanes.forEach((lane, i) => laneLayer.appendChild(buildLane(lane, i, l)));
+      } else if (mode === "markers") {
+        modeText.textContent = L.markers_badge; modeBadge.className = "badge marker"; hint.textContent = L.markers_hint;
+        markers.forEach((m, i) => markerLayer.appendChild(buildMarker(m, i, l)));
+      } else if (mode === "targets") {
+        modeText.textContent = L.arrows_badge; modeBadge.className = "badge arrow"; hint.textContent = L.arrows_hint;
+        arrows.forEach((a, i) => arrowLayer.appendChild(buildArrow(a, i, l)));
+      } else if (mode === "corners") {
+        modeText.textContent = L.corners_badge; modeBadge.className = "badge corner"; hint.textContent = L.corners_hint;
+        cornerLayer.appendChild(buildCorners(l));
+      }
+    }
+
+    function buildLane(lane, index, l) {
+      const gel = gelRect();
+      const x = gel.x + Number(lane.x_rel) * gel.w;
+      const active = index === selected;
+      const g = ns("g", { "data-kind": "lane", "data-index": index });
+      g.appendChild(ns("line", {
+        x1: x, y1: gel.y, x2: x, y2: gel.y + gel.h,
+        stroke: active ? "#60a5fa" : "rgba(96, 165, 250,0.62)",
+        "stroke-width": active ? 2.4 : 1.7, "stroke-dasharray": "7 6",
+        "vector-effect": "non-scaling-stroke", "pointer-events": "none"
+      }));
+      const hw = Math.max(16, Number(l.label_font_px) * 0.95);
+      const hh = Math.max(12, Number(l.header_h) * 0.28);
+      const hy = Math.max(2, gel.y - hh - 2);
+      if (!args || args.laneNumbers !== false) {
+        g.appendChild(ns("rect", {
+          x: x - hw / 2, y: hy, width: hw, height: hh, rx: 3,
+          fill: active ? "#60a5fa" : "rgba(96, 165, 250,0.7)", "pointer-events": "none"
+        }));
+        const cap = ns("text", {
+          x: x, y: hy + hh * 0.74, "text-anchor": "middle",
+          "font-size": Math.max(8, hh * 0.7), "font-family": "Arial, Helvetica, sans-serif",
+          fill: "#fff", "pointer-events": "none"
+        });
+        cap.textContent = String(index + 1);
+        g.appendChild(cap);
+      }
+      g.appendChild(ns("line", {
+        x1: x, y1: gel.y - hh - 4, x2: x, y2: gel.y + gel.h, stroke: "transparent",
+        "stroke-width": Math.max(18, hw * 0.9), "vector-effect": "non-scaling-stroke",
+        "class": "hit", "data-kind": "lane", "data-index": index
+      }));
+      return g;
+    }
+
+    function buildMarker(marker, index, l) {
+      const gel = gelRect();
+      const y = gel.y + Number(marker.y_rel) * gel.h;
+      const active = index === selected;
+      const g = ns("g", { "data-kind": "marker", "data-index": index });
+      g.appendChild(ns("line", {
+        x1: gel.x, y1: y, x2: gel.x + gel.w, y2: y,
+        stroke: active ? "#60a5fa" : "rgba(96,165,250,0.62)",
+        "stroke-width": active ? 2.4 : 1.7, "stroke-dasharray": "7 6",
+        "vector-effect": "non-scaling-stroke", "pointer-events": "none"
+      }));
+      const cw = Math.max(34, Number(l.number_font_px || 14) * 2.6);
+      const ch = Math.max(13, Number(l.number_font_px || 14) * 1.25);
+      const cx = gel.x + 3;
+      g.appendChild(ns("rect", {
+        x: cx, y: y - ch / 2, width: cw, height: ch, rx: 3,
+        fill: active ? "rgba(96,165,250,0.94)" : "rgba(96,165,250,0.78)", "pointer-events": "none"
+      }));
+      const t = ns("text", {
+        x: cx + cw / 2, y: y + ch * 0.34, "text-anchor": "middle",
+        "font-size": Math.max(8, ch * 0.68), "font-family": "Arial, Helvetica, sans-serif",
+        fill: "#fff", "pointer-events": "none"
+      });
+      t.textContent = String(marker.mw);
+      g.appendChild(t);
+      g.appendChild(ns("line", {
+        x1: gel.x, y1: y, x2: gel.x + gel.w, y2: y, stroke: "transparent",
+        "stroke-width": 20, "vector-effect": "non-scaling-stroke",
+        "class": "hit", "data-kind": "marker", "data-index": index
+      }));
+      return g;
+    }
+
+    function buildArrow(arrow, index, l) {
+      const gel = gelRect();
+      const y = gel.y + Number(arrow.y_rel) * gel.h;
+      const active = index === selected;
+      const side = arrow.side === "left" ? "left" : "right";
+      const len = Number(l.arrow_len);
+      const gap = Number(l.arrow_gap);
+      const g = ns("g", { "data-kind": "arrow", "data-index": index, "data-side": side });
+      const edge = side === "right" ? gel.x + gel.w : gel.x;
+      const tail = side === "right" ? edge + len : edge - len;
+      g.appendChild(ns("line", {
+        x1: edge, y1: y, x2: tail, y2: y,
+        stroke: active ? "#c62828" : "rgba(198,40,40,0.75)",
+        "stroke-width": active ? 2.6 : 1.8, "vector-effect": "non-scaling-stroke",
+        "pointer-events": "none"
+      }));
+      const hx = tail - (side === "right" ? -0 : 0);
+      g.appendChild(ns("circle", {
+        cx: tail, cy: y, r: Math.max(5, Number(l.number_font_px || 14) * 0.42),
+        fill: active ? "#c62828" : "rgba(198,40,40,0.8)", "pointer-events": "none"
+      }));
+      const t = ns("text", {
+        x: side === "right" ? tail + gap : tail - gap, y: y,
+        "text-anchor": side === "right" ? "start" : "end",
+        "dominant-baseline": "middle", "font-size": Math.max(9, Number(l.number_font_px || 14)),
+        "font-family": "Arial, Helvetica, sans-serif",
+        fill: active ? "#c62828" : "rgba(198,40,40,0.9)", "pointer-events": "none"
+      });
+      t.textContent = arrow.label || "…";
+      g.appendChild(t);
+      g.appendChild(ns("line", {
+        x1: Math.min(edge, tail) - 12, y1: y, x2: Math.max(edge, tail) + 12, y2: y,
+        stroke: "transparent", "stroke-width": 22, "vector-effect": "non-scaling-stroke",
+        "class": "hit", "data-kind": "arrow", "data-index": index, "data-side": side
+      }));
+      return g;
+    }
+
+    function buildCorners(l) {
+      const gel = gelRect();
+      const g = ns("g", { "data-kind": "corners" });
+      const pts = corners.map(c => [gel.x + Number(c[0]) * gel.w, gel.y + Number(c[1]) * gel.h]);
+      if (pts.length === 4) {
+        const poly = ns("polygon", {
+          points: pts.map(p => p[0] + "," + p[1]).join(" "),
+          fill: "rgba(85, 85, 85,0.10)", stroke: "rgba(85, 85, 85,0.85)",
+          "stroke-width": 1.6, "stroke-dasharray": "6 5", "vector-effect": "non-scaling-stroke",
+          "pointer-events": "none"
+        });
+        g.appendChild(poly);
+      }
+      pts.forEach((p, i) => {
+        g.appendChild(ns("circle", {
+          cx: p[0], cy: p[1], r: 7, fill: "#555555", stroke: "#fff", "stroke-width": 1.6,
+          "vector-effect": "non-scaling-stroke", "class": "hit", "data-kind": "corner", "data-index": i
+        }));
+        const label = ns("text", {
+          x: p[0], y: p[1] - 10, "text-anchor": "middle", "font-size": 10,
+          "font-family": "Arial, Helvetica, sans-serif", fill: "#383838", "pointer-events": "none"
+        });
+        label.textContent = ["TL", "TR", "BR", "BL"][i];
+        g.appendChild(label);
+      });
+      return g;
+    }
+
+    function values(name) {
+      if (name === "lanes") return lanes.map(l => Math.round(Number(l.x_rel) * 10000) / 10000);
+      if (name === "markers") return markers.map(m => Math.round(Number(m.y_rel) * 10000) / 10000);
+      return arrows.map(a => Math.round(Number(a.y_rel) * 10000) / 10000);
+    }
+
+    function publish(eventName, payload) {
+      seq += 1;
+      sendValue(Object.assign({ event: eventName, seq: seq, nonce: Date.now() + "-" + seq }, payload || {}));
+    }
+    function selectedFromEvent(target) {
+      if (!target || !target.closest) return null;
+      const node = target.closest("[data-kind]");
+      if (!node) return null;
+      return { kind: node.getAttribute("data-kind"), index: Number(node.getAttribute("data-index")), side: node.getAttribute("data-side") };
+    }
+
+    function onPointerDown(event) {
+      if (!args) return;
+      const info = selectedFromEvent(event.target);
+      const p = svgPoint(event);
+      if (info) {
+        const kindOk = (mode === "lanes" && info.kind === "lane") ||
+          (mode === "markers" && info.kind === "marker") ||
+          (mode === "targets" && info.kind === "arrow") ||
+          (mode === "corners" && info.kind === "corner");
+        if (kindOk) {
+          drag = { kind: info.kind, index: info.index, moved: false, startX: event.clientX, startY: event.clientY, point: p };
+          svg.setPointerCapture(event.pointerId);
+          event.preventDefault();
+          return;
+        }
+      }
+      if (event.target === bgRect || event.target === svg) {
+        drag = { kind: "canvas", moved: false, startX: event.clientX, startY: event.clientY, point: p };
+        svg.setPointerCapture(event.pointerId);
+      }
+    }
+
+    function syncLane(index, x) {
+      const gel = gelRect();
+      const node = laneLayer.querySelector('[data-kind="lane"][data-index="' + index + '"]');
+      if (!node) return;
+      node.querySelectorAll("line").forEach(n => { n.setAttribute("x1", x); n.setAttribute("x2", x); });
+      const rect = node.querySelector("rect");
+      if (rect) rect.setAttribute("x", x - Number(rect.getAttribute("width")) / 2);
+      const t = node.querySelector("text"); if (t) t.setAttribute("x", x);
+    }
+    function syncMarker(index, y) {
+      const node = markerLayer.querySelector('[data-kind="marker"][data-index="' + index + '"]');
+      if (!node) return;
+      node.querySelectorAll("line").forEach(n => { n.setAttribute("y1", y); n.setAttribute("y2", y); });
+      const rect = node.querySelector("rect");
+      if (rect) rect.setAttribute("y", y - Number(rect.getAttribute("height")) / 2);
+      const t = node.querySelector("text"); if (t) t.setAttribute("y", y + Number(rect.getAttribute("height")) * 0.34);
+    }
+    function syncArrow(index, y) {
+      const node = arrowLayer.querySelector('[data-kind="arrow"][data-index="' + index + '"]');
+      if (!node) return;
+      node.querySelectorAll("line").forEach(n => { n.setAttribute("y1", y); n.setAttribute("y2", y); });
+      const c = node.querySelector("circle"); if (c) c.setAttribute("cy", y);
+      const t = node.querySelector("text"); if (t) t.setAttribute("y", y);
+    }
+    function syncCorner(index, x, y) {
+      const node = cornerLayer.querySelector('[data-kind="corner"][data-index="' + index + '"]');
+      if (node) { node.setAttribute("cx", x); node.setAttribute("cy", y); }
+      const pts = corners.map(c => [gelRect().x + c[0] * gelRect().w, gelRect().y + c[1] * gelRect().h]);
+      const poly = cornerLayer.querySelector("polygon");
+      if (poly && pts.length === 4) poly.setAttribute("points", pts.map(p => p[0] + "," + p[1]).join(" "));
+      const texts = cornerLayer.querySelectorAll("text");
+      if (texts[index]) { texts[index].setAttribute("x", x); texts[index].setAttribute("y", y - 10); }
+    }
+
+    function onPointerMove(event) {
+      if (!drag || !args) return;
+      const gel = gelRect();
+      const p = svgPoint(event);
+      if (Math.abs(event.clientX - drag.startX) + Math.abs(event.clientY - drag.startY) > 3) drag.moved = true;
+
+      if (drag.kind === "lane") {
+        const v = clamp((p.x - gel.x) / gel.w, 0, 1);
+        lanes[drag.index].x_rel = Math.round(v * 10000) / 10000;
+        syncLane(drag.index, gel.x + v * gel.w);
+        showStatus("Spur " + (drag.index + 1) + " · " + (v * 100).toFixed(1) + " %");
+      } else if (drag.kind === "marker") {
+        const v = clamp((p.y - gel.y) / gel.h, 0, 1);
+        markers[drag.index].y_rel = Math.round(v * 10000) / 10000;
+        syncMarker(drag.index, gel.y + v * gel.h);
+        showStatus(markers[drag.index].mw + " kDa · " + (v * 100).toFixed(1) + " %");
+      } else if (drag.kind === "arrow") {
+        const v = clamp((p.y - gel.y) / gel.h, 0, 1);
+        arrows[drag.index].y_rel = Math.round(v * 10000) / 10000;
+        syncArrow(drag.index, gel.y + v * gel.h);
+        showStatus((v * 100).toFixed(1) + " %");
+      } else if (drag.kind === "corner") {
+        const vx = clamp((p.x - gel.x) / gel.w, 0, 1);
+        const vy = clamp((p.y - gel.y) / gel.h, 0, 1);
+        corners[drag.index] = [Math.round(vx * 10000) / 10000, Math.round(vy * 10000) / 10000];
+        syncCorner(drag.index, gel.x + vx * gel.w, gel.y + vy * gel.h);
+      }
+    }
+
+    function onPointerUp(event) {
+      if (!drag || !args) return;
+      const finished = drag;
+      drag = null;
+      hideStatus();
+
+      if (mode === "lanes") {
+        if (finished.kind === "lane" && finished.moved) return publish("lanes", { lanes: values("lanes") });
+        if (finished.kind === "lane") return publish("select_lane", { index: finished.index });
+      }
+      if (mode === "markers") {
+        if (finished.kind === "marker" && finished.moved) return publish("markers", { markers: values("markers") });
+        if (finished.kind === "marker") return publish("select_marker", { index: finished.index });
+      }
+      if (mode === "targets") {
+        if (finished.kind === "arrow" && finished.moved) return publish("arrows", { arrows: values("arrows") });
+        if (finished.kind === "arrow") return publish("select_arrow", { index: finished.index });
+      }
+      if (mode === "corners" && finished.kind === "corner" && finished.moved) {
+        return publish("corners", { corners: corners });
+      }
+
+      if (finished.kind === "canvas" && !finished.moved && finished.point) {
+        const gel = gelRect();
+        const p = finished.point;
+        if (mode === "lanes" && p.x >= gel.x - 10 && p.x <= gel.x + gel.w + 10) {
+          publish("add_lane", { x_pos_rel: Math.round(clamp((p.x - gel.x) / gel.w, 0, 1) * 10000) / 10000 });
+        } else if (mode === "markers" && p.y >= gel.y && p.y <= gel.y + gel.h) {
+          publish("add_marker", { y_pos_rel: Math.round(clamp((p.y - gel.y) / gel.h, 0, 1) * 10000) / 10000 });
+        } else if (mode === "targets" && p.y >= gel.y && p.y <= gel.y + gel.h && (p.x < gel.x || p.x > gel.x + gel.w)) {
+          publish("add_arrow", {
+            y_pos_rel: Math.round(clamp((p.y - gel.y) / gel.h, 0, 1) * 10000) / 10000,
+            side: p.x < gel.x ? "left" : "right"
+          });
+        }
+      }
+    }
+
+    function onDoubleClick(event) {
+      if (!args) return;
+      const info = selectedFromEvent(event.target);
+      if (!info) return;
+      event.preventDefault();
+      if (info.kind === "lane" && mode === "lanes") publish("delete_lane", { index: info.index });
+      else if (info.kind === "marker" && mode === "markers") publish("delete_marker", { index: info.index });
+      else if (info.kind === "arrow" && mode === "targets") publish("delete_arrow", { index: info.index });
+    }
+
+    svg.addEventListener("pointerdown", onPointerDown);
+    svg.addEventListener("pointermove", onPointerMove);
+    svg.addEventListener("pointerup", onPointerUp);
+    svg.addEventListener("pointercancel", onPointerUp);
+    svg.addEventListener("dblclick", onDoubleClick);
+
+    function applyArgs(nextArgs) {
+      if (!nextArgs) return;
+      args = nextArgs;
+      lanes = (args.lanes || []).map(l => Object.assign({}, l));
+      markers = (args.markers || []).map(m => Object.assign({}, m));
+      arrows = (args.arrows || []).map(a => Object.assign({}, a));
+      corners = (args.corners || []).map(c => [Number(c[0]), Number(c[1])]);
+      mode = ["lanes", "markers", "targets", "corners"].indexOf(args.mode) >= 0 ? args.mode : "lanes";
+      selected = Number(args.selected || 0);
+      if (args.image) img.src = args.image;
+      render();
+    }
+
+    window.addEventListener("message", function (event) {
+      const data = event.data || {};
+      if (data.type === "streamlit:render") {
+        applyArgs(data.args);
+        if (data.theme) document.documentElement.dataset.theme = data.theme.base || "light";
+      }
+    });
+
+    img.addEventListener("load", function () { render(); setFrameHeight(); });
+    new ResizeObserver(function () { setFrameHeight(); }).observe(stage);
+
+    post("streamlit:componentReady", { apiVersion: 1 });
+  })();
+  </script>
+</body>
+</html>

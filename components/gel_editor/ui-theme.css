@@ -1,0 +1,11 @@
+/* Gleiche Oberfläche in den eingebetteten Gel-Werkzeugen. */
+:root{--ui-panel:#fafaf8;--ui-soft:#f0f0f0;--ui-border:#d2d2d2;--ui-text:#20241f;--ui-muted:#787b75;--ui-accent:#60a5fa;--ui-ink:#2563a6;--ui-selected:#f3f3f1}
+:root[data-theme="dark"],body.dark{--ui-panel:#182333;--ui-soft:#202f44;--ui-border:#34465e;--ui-text:#e7eef8;--ui-muted:#a4b3c6;--ui-accent:#93c5fd;--ui-ink:#93c5fd;--ui-selected:#253d5b}
+body{color:var(--ui-text);font-family:system-ui,sans-serif}
+button,.dark button,body.dark button{border-color:var(--ui-border);background:var(--ui-panel);color:var(--ui-text);border-radius:9px}
+button:hover,.bar button:hover{background:var(--ui-selected);border-color:var(--ui-accent)}
+button:focus-visible,.editor:focus{outline:3px solid var(--ui-accent);outline-offset:2px}
+button[aria-pressed="true"],body.dark button[aria-pressed="true"],#save{background:var(--ui-selected);color:var(--ui-ink);border-color:var(--ui-accent)}
+.editor,body.dark .editor,th,body.dark th{background:var(--ui-panel);color:var(--ui-text);border-color:var(--ui-border)}
+.badge,.badge.marker,.badge.arrow,.badge.corner{background:var(--ui-selected);color:var(--ui-ink)}
+.hint{color:var(--ui-muted)}.stage{border-color:var(--ui-border)}.stage.dark{background:#111925}

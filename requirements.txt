@@ -1,0 +1,15 @@
+streamlit>=1.49,<2
+Pillow>=10.0
+numpy>=1.26
+pandas>=2.0
+pydantic>=2.9
+reportlab>=4.0
+python-docx>=1.1
+
+# Optional: beschleunigt Perspektiv-Entzerrung und CLAHE.
+# Ohne OpenCV nutzt die App automatisch den Pillow/NumPy-Fallback und läuft
+# vollständig. Für Python 3.15 ggf. noch kein Wheel verfügbar.
+# opencv-python-headless>=4.9
+
+# PWA-Auslieferung
+tornado>=6.5,<7

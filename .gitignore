@@ -1,0 +1,34 @@
+# Local data and media
+lab_data/
+projects/
+exports/
+media/
+*.sqlite
+*.sqlite3
+*.db
+*.sqlite3-wal
+*.sqlite3-shm
+# Local credentials
+.env
+.env.*
+!.env.example
+.streamlit/secrets.toml
+certs/
+*.pem
+*.key
+# Generated artifacts
+.venv/
+venv/
+node_modules/
+__pycache__/
+*.py[cod]
+.ruff_cache/
+.pytest_cache/
+build/
+dist/
+releases/
+desktop/staged-application/
+*.app/
+*.zip
+*.dmg
+.DS_Store

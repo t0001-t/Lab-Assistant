@@ -1,0 +1,14 @@
+# Projektweite Ruff-Konfiguration.
+# ISC004: bewusst mehrzeilige, implizit verkettete Strings in den
+# Übersetzungs-Tabellen (locales.py) und UI-Texten.
+line-length = 120
+
+[lint]
+ignore = ["ISC004"]
+
+# Wörtlich aus dem Nutzerdokument übernommene Referenzdateien:
+# deren Importreihenfolge und Typnotation sollen unverändert bleiben.
+[lint.per-file-ignores]
+"pwa_component.py" = ["I001", "F401", "UP045"]
+"lab_assistant.py" = ["F401", "F541"]
+"generate_icons.py" = ["I001"]

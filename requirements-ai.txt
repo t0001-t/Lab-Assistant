@@ -1,0 +1,5 @@
+# Optional. Install with: python -m pip install -r requirements-ai.txt
+# OCR also requires the Tesseract application and German/English language data.
+pytesseract>=0.3.13
+faster-whisper>=1.0
+openai>=1.0

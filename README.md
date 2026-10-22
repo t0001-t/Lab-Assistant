@@ -1,0 +1,32 @@
+# Lab Assistant
+
+Vollständiger Lab Assistant mit Gel-Editor, elektronischem Laborbuch, Praktikumsordnern, Laborrechnern und Kalender. Dies ist die ursprüngliche Python-/Streamlit-Anwendung vor dem eigenständigen Vercel-Umbau.
+
+## Lokal starten
+
+Python 3.12 wird empfohlen.
+
+```sh
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+python pwa_server.py --port 8502 --backend-port 8503
+```
+
+Danach http://127.0.0.1:8502 öffnen. Unter Windows die virtuelle Umgebung mit `.venv\Scripts\activate` aktivieren.
+
+## Daten
+
+Notizen und Kalender liegen standardmäßig in `lab_data/`. Über `LAB_ASSISTANT_DATA_DIR` kann ein anderes Datenverzeichnis gewählt werden. Persönliche Daten, Bilder aus eigenen Versuchen, Zugangsdaten und fertige App-Pakete sind nicht Bestandteil dieses Quellcodepakets.
+
+## Tests
+
+```sh
+LAB_ASSISTANT_DATA_DIR=/tmp/lab-assistant-test python -m unittest discover -s tests
+```
+
+## Bereitstellung
+
+Die vollständige Streamlit-Anwendung benötigt einen laufenden Python-Server. `Dockerfile` und `docker-compose.yml` sind enthalten. Der separate, noch in Bearbeitung befindliche Vercel-Gel-Editor gehört nicht zu diesem Repository.
+
+Weitere technische Hinweise stehen in `SPEC.md` und `AGENTS.md`.

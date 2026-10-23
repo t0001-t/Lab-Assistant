@@ -45,3 +45,9 @@ Die Seitenleiste lässt sich mit dem Pfeil oben ein- und ausklappen. In kleinen
 Fenstern startet sie automatisch eingeklappt. Bild und Bedienung stehen bei
 weniger verfügbarem Platz untereinander; Reiter sind horizontal scrollbar.
 Das Verkleinern der Vorschau verändert weder Originalbild noch Exportauflösung.
+
+## Bedingungsmatrix
+
+Einzelne Plus- und Minuszeichen werden in Vorschau und Export unabhängig von
+den auf dem Server installierten Schriften gezeichnet. Die gespeicherten
+Bedingungswerte und frei eingegebene Texte bleiben unverändert.

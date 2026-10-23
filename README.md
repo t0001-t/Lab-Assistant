@@ -38,3 +38,10 @@ python -m unittest discover -s tests
 
 Persönliche Bilder, gespeicherte Projekte und Zugangsdaten gehören nicht ins
 Repository. Die bisherige Repository-Historie bleibt erhalten.
+
+## Kleine Fenster und Seitenleiste
+
+Die Seitenleiste lässt sich mit dem Pfeil oben ein- und ausklappen. In kleinen
+Fenstern startet sie automatisch eingeklappt. Bild und Bedienung stehen bei
+weniger verfügbarem Platz untereinander; Reiter sind horizontal scrollbar.
+Das Verkleinern der Vorschau verändert weder Originalbild noch Exportauflösung.

@@ -65,7 +65,7 @@ if not st.session_state.get("lab_shell"):
         page_icon="data:image/png;base64,"
         + base64.b64encode((ROOT / "assets" / "header_gel.png").read_bytes()).decode("ascii"),
         layout="wide",
-        initial_sidebar_state="expanded",
+        initial_sidebar_state="auto",
     )
 
 _LIGHT_CSS = """

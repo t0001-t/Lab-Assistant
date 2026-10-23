@@ -1,32 +1,40 @@
-# Lab Assistant
+# Gel Annotator
 
-Vollständiger Lab Assistant mit Gel-Editor, elektronischem Laborbuch, Praktikumsordnern, Laborrechnern und Kalender. Dies ist die ursprüngliche Python-/Streamlit-Anwendung vor dem eigenständigen Vercel-Umbau.
+Eigenständiger SDS-PAGE-Gel-Editor mit den Ladeoptimierungen des Lab Assistant.
+Dieses Repository enthält ausschließlich den Gel-Annotator und seine benötigten
+Module, Komponenten und Beispieldateien. Der vollständige Lab Assistant bleibt
+in [Lab-Assistant-Complete](https://github.com/t0001-t/Lab-Assistant-Complete).
 
-## Lokal starten
+## Starten
 
 Python 3.12 wird empfohlen.
 
 ```sh
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-python pwa_server.py --port 8502 --backend-port 8503
+python -m pip install -r requirements.txt
+python -m streamlit run app.py
 ```
 
-Danach http://127.0.0.1:8502 öffnen. Unter Windows die virtuelle Umgebung mit `.venv\Scripts\activate` aktivieren.
+Bei Streamlit-Hosting: Repository `t0001-t/Lab-Assistant`, Branch `main`,
+Startdatei **`app.py`**. Das gesamte Repository wird benötigt.
 
-## Daten
+## Funktionen
 
-Notizen und Kalender liegen standardmäßig in `lab_data/`. Über `LAB_ASSISTANT_DATA_DIR` kann ein anderes Datenverzeichnis gewählt werden. Persönliche Daten, Bilder aus eigenen Versuchen, Zugangsdaten und fertige App-Pakete sind nicht Bestandteil dieses Quellcodepakets.
+Gelbilder importieren und zuschneiden, Perspektive korrigieren, Spuren und
+Beschriftungen bearbeiten, Marker kalibrieren, Zielbanden markieren und mehrere
+Gele kombinieren. Export als PNG, TIFF, PDF, CSV, JSON und ZIP.
+
+## Geschwindigkeit
+
+Exportbilder und Download-Dateien werden erst beim Öffnen des Export-Reiters
+berechnet. Die Bearbeitungsreiter teilen identische Vorschaubilder. Bildqualität,
+Originaldaten und Exportauflösung bleiben erhalten. Online-Ladezeiten hängen
+zusätzlich vom Hosting ab.
 
 ## Tests
 
 ```sh
-LAB_ASSISTANT_DATA_DIR=/tmp/lab-assistant-test python -m unittest discover -s tests
+python -m unittest discover -s tests
 ```
 
-## Bereitstellung
-
-Die vollständige Streamlit-Anwendung benötigt einen laufenden Python-Server. `Dockerfile` und `docker-compose.yml` sind enthalten. Der separate, noch in Bearbeitung befindliche Vercel-Gel-Editor gehört nicht zu diesem Repository.
-
-Weitere technische Hinweise stehen in `SPEC.md` und `AGENTS.md`.
+Persönliche Bilder, gespeicherte Projekte und Zugangsdaten gehören nicht ins
+Repository. Die bisherige Repository-Historie bleibt erhalten.
